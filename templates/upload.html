@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Retail Analytics Hub</title>
+        <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+        <style>
+            :root {
+                --bs-primary: #6366f1;
+                --bs-secondary: #4f46e5;
+                --bs-light: #f8f9fa;
+                --bs-dark: #1e1e2d;
+            }
+            
+            body {
+                background-color: #f5f7fb;
+                color: #4a5568;
+            }
+            
+            .analytics-header {
+                background: linear-gradient(135deg, #1e1e2d 0%, #4f46e5 100%);
+                color: white;
+                padding: 2rem 0;
+                margin-bottom: 2rem;
+            }
+            
+            .dashboard-card {
+                background: white;
+                border-radius: 0.5rem;
+                box-shadow: 0 1px 3px rgba(0,0,0,0.12);
+                transition: transform 0.2s;
+            }
+            
+            .dashboard-card:hover {
+                transform: translateY(-2px);
+            }
+            
+            .data-table {
+                --bs-table-striped-bg: #f8f9fa;
+                --bs-table-hover-bg: #f1f5f9;
+            }
+            
+            .metric-badge {
+                background: var(--bs-primary);
+                color: white;
+                padding: 0.5rem 1rem;
+                border-radius: 0.25rem;
+            }
+        </style>
+    </head>
+<body>
+    <header class="analytics-header">
+        <!-- Same header content -->
+    </header>
+
+    <main class="container">
+        <div class="dashboard-card p-4">
+            <h2 class="h4 mb-4"><i class="fas fa-cloud-upload-alt me-2 text-primary"></i>Data Management</h2>
+            
+            <div class="alert alert-info">
+                <i class="fas fa-info-circle me-2"></i>
+                Upload CSV files in the following order: Transactions, Households, Products
+            </div>
+
+            <form method="POST" enctype="multipart/form-data">
+                <div class="mb-4">
+                    <label class="form-label fw-bold">Transactions Data</label>
+                    <input type="file" class="form-control" name="transactions" required>
+                    <div class="form-text">Should contain purchase records</div>
+                </div>
+
+                <div class="mb-4">
+                    <label class="form-label fw-bold">Households Data</label>
+                    <input type="file" class="form-control" name="households" required>
+                    <div class="form-text">Demographic information</div>
+                </div>
+
+                <div class="mb-4">
+                    <label class="form-label fw-bold">Products Data</label>
+                    <input type="file" class="form-control" name="products" required>
+                    <div class="form-text">Product categorization</div>
+                </div>
+
+                <div class="d-flex gap-3">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-upload me-2"></i>Process Data
+                    </button>
+                    <a href="/" class="btn btn-outline-secondary">
+                        <i class="fas fa-arrow-left me-2"></i>Return to Dashboard
+                    </a>
+                </div>
+            </form>
+        </div>
+    </main>
+</body>
+</html>
