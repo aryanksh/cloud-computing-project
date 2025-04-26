@@ -76,6 +76,167 @@ def upload_data():
     return render_template('upload.html')
 
 # ========================
+# Data Analysis Functionality
+# ========================
+@app.route('/analysis', methods=['GET'])
+def analysis():
+    return render_template('analysis.html')
+
+@app.route('/api/demographic-engagement', methods=['GET'])
+def demographic_engagement():
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        
+        # Query to analyze demographics impact on spending
+        query = """
+        SELECT 
+            h.INCOME_RANGE, 
+            h.HH_SIZE, 
+            CASE WHEN h.CHILDREN > 0 THEN 'With Children' ELSE 'No Children' END as CHILD_STATUS,
+            h.L as LOCATION,
+            COUNT(DISTINCT t.BASKET_NUM) as BASKET_COUNT,
+            AVG(t.SPEND) as AVG_SPEND,
+            SUM(t.SPEND) as TOTAL_SPEND
+        FROM household h
+        JOIN transactions t ON h.HSHD_NUM = t.HSHD_NUM
+        GROUP BY h.INCOME_RANGE, h.HH_SIZE, CASE WHEN h.CHILDREN > 0 THEN 'With Children' ELSE 'No Children' END, h.L
+        ORDER BY TOTAL_SPEND DESC
+        """
+        cursor.execute(query)
+        columns = [column[0] for column in cursor.description]
+        results = [dict(zip(columns, row)) for row in cursor.fetchall()]
+        
+        return jsonify(results)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+@app.route('/api/engagement-over-time', methods=['GET'])
+def engagement_over_time():
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        
+        # Query for spending trends over time
+        query = """
+        SELECT 
+            t.YEAR, 
+            t.WEEK_NUM, 
+            p.DEPARTMENT, 
+            p.COMMODITY,
+            SUM(t.SPEND) as TOTAL_SPEND,
+            SUM(t.UNITS) as TOTAL_UNITS
+        FROM transactions t
+        JOIN products p ON t.PRODUCT_NUM = p.PRODUCT_NUM
+        GROUP BY t.YEAR, t.WEEK_NUM, p.DEPARTMENT, p.COMMODITY
+        ORDER BY t.YEAR, t.WEEK_NUM
+        """
+        cursor.execute(query)
+        columns = [column[0] for column in cursor.description]
+        results = [dict(zip(columns, row)) for row in cursor.fetchall()]
+        
+        return jsonify(results)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+@app.route('/api/basket-analysis', methods=['GET'])
+def basket_analysis():
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        
+        # Query to find frequent product combinations
+        query = """
+        SELECT 
+            t1.PRODUCT_NUM as PRODUCT1,
+            t2.PRODUCT_NUM as PRODUCT2,
+            p1.COMMODITY as COMMODITY1,
+            p2.COMMODITY as COMMODITY2,
+            COUNT(*) as FREQUENCY
+        FROM transactions t1
+        JOIN transactions t2 ON t1.BASKET_NUM = t2.BASKET_NUM AND t1.HSHD_NUM = t2.HSHD_NUM AND t1.PRODUCT_NUM < t2.PRODUCT_NUM
+        JOIN products p1 ON t1.PRODUCT_NUM = p1.PRODUCT_NUM
+        JOIN products p2 ON t2.PRODUCT_NUM = p2.PRODUCT_NUM
+        GROUP BY t1.PRODUCT_NUM, t2.PRODUCT_NUM, p1.COMMODITY, p2.COMMODITY
+        ORDER BY FREQUENCY DESC
+        """
+        cursor.execute(query)
+        columns = [column[0] for column in cursor.description]
+        results = [dict(zip(columns, row)) for row in cursor.fetchall()[:100]]  # Limit to top 100
+        
+        return jsonify(results)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+@app.route('/api/seasonal-trends', methods=['GET'])
+def seasonal_trends():
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        
+        # Query for seasonal patterns
+        query = """
+        SELECT 
+            t.WEEK_NUM, 
+            p.DEPARTMENT, 
+            p.COMMODITY,
+            AVG(t.SPEND) as AVG_SPEND,
+            AVG(t.UNITS) as AVG_UNITS
+        FROM transactions t
+        JOIN products p ON t.PRODUCT_NUM = p.PRODUCT_NUM
+        GROUP BY t.WEEK_NUM, p.DEPARTMENT, p.COMMODITY
+        ORDER BY t.WEEK_NUM
+        """
+        cursor.execute(query)
+        columns = [column[0] for column in cursor.description]
+        results = [dict(zip(columns, row)) for row in cursor.fetchall()]
+        
+        return jsonify(results)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+@app.route('/api/brand-preferences', methods=['GET'])
+def brand_preferences():
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        
+        # Query for brand preferences (assuming there's brand info in products table or other related data)
+        query = """
+        SELECT 
+            p.DEPARTMENT, 
+            p.COMMODITY,
+            SUM(t.SPEND) as TOTAL_SPEND,
+            COUNT(DISTINCT h.HSHD_NUM) as UNIQUE_CUSTOMERS
+        FROM transactions t
+        JOIN products p ON t.PRODUCT_NUM = p.PRODUCT_NUM
+        JOIN household h ON t.HSHD_NUM = h.HSHD_NUM
+        GROUP BY p.DEPARTMENT, p.COMMODITY
+        ORDER BY TOTAL_SPEND DESC
+        """
+        cursor.execute(query)
+        columns = [column[0] for column in cursor.description]
+        results = [dict(zip(columns, row)) for row in cursor.fetchall()]
+        
+        return jsonify(results)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        cursor.close()
+        conn.close()
+# ========================
 # Interactive Search
 # ========================
 @app.route('/search', methods=['GET'])
