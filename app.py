@@ -734,12 +734,25 @@ def search():
         cursor.close()
         conn.close()
 
+@app.route('/api/login', methods=['POST'])
+def login():
+    global LOGGEDIN
+    LOGGEDIN = True
+    try:
+        return jsonify({'message': 'Log in  successfully!'})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 # ========================
 # HTML Templates
 # ========================
 @app.route('/')
 def index():
-    return render_template('index.html')
-
+    if(LOGGEDIN):
+        return render_template('index.html')
+    else:
+        return render_template('login.html')
 if __name__ == '__main__':
+    global LOGGEDIN
+    LOGGEDIN = False
     app.run(debug=True)
