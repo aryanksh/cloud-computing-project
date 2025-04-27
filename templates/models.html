@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Model Management</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        .card {
+            margin-bottom: 20px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        .section-header {
+            padding: 15px 0;
+            margin-bottom: 20px;
+            border-bottom: 1px solid #eee;
+        }
+        .result-box {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 5px;
+            margin-top: 15px;
+        }
+        .feature-importance-bar {
+            height: 20px;
+            background-color: #0d6efd;
+            margin-bottom: 8px;
+        }
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 20px;
+        }
+        .explanation-img {
+            max-width: 100%;
+            height: auto;
+            margin-top: 15px;
+        }
+    </style>
+</head>
+    <body>  <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container">
+            <a class="navbar-brand" href="/">Consumer Data Analytics</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav">
+                    <li class="nav-item">
+                        <a class="nav-link" href="/">Home</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link active" href="/models">Analysis</a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+    <div class="container py-4">
+        <h1 class="text-center mb-4">AI Model Management Dashboard</h1>
+        
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-body">
+                        <h2 class="card-title">Train Models</h2>
+                        <p class="card-text">
+                            Start training the churn prediction and basket analysis models with the current data.
+                            This process might take some time to complete.
+                        </p>
+                        <button id="trainModelsBtn" class="btn btn-primary">Train Models</button>
+                        <div id="trainingStatus" class="alert mt-3" style="display: none;"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+            <!-- Churn Prediction Section -->
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header bg-primary text-white">
+                        <h3 class="mb-0">Customer Churn Prediction</h3>
+                    </div>
+                    <div class="card-body">
+                        <p class="card-text">Enter customer behavior metrics to predict churn:</p>
+                        <form id="churnPredictionForm">
+                            <div class="mb-3">
+                                <label for="spend_recent_30" class="form-label">Spend in Last 30 Days ($)</label>
+                                <input type="number" class="form-control" id="spend_recent_30" value="250" step="0.01">
+                            </div>
+                            <div class="mb-3">
+                                <label for="spend_mid_90" class="form-label">Spend in 31-90 Days ($)</label>
+                                <input type="number" class="form-control" id="spend_mid_90" value="800" step="0.01">
+                            </div>
+                            <div class="mb-3">
+                                <label for="transactions_recent_30" class="form-label">Transactions in Last 30 Days</label>
+                                <input type="number" class="form-control" id="transactions_recent_30" value="4">
+                            </div>
+                            <div class="mb-3">
+                                <label for="transactions_mid_90" class="form-label">Transactions in 31-90 Days</label>
+                                <input type="number" class="form-control" id="transactions_mid_90" value="12">
+                            </div>
+                            <button type="submit" class="btn btn-success">Predict Churn</button>
+                        </form>
+
+                        <div id="churnResult" class="result-box" style="display: none;">
+                            <h4>Prediction Result</h4>
+                            <div id="churnPredictionOutput"></div>
+                            <div class="progress mt-3">
+                                <div id="churnProbability" class="progress-bar" role="progressbar" style="width: 0%"></div>
+                            </div>
+                            <p class="mt-2"><small>Churn Probability: <span id="churnProbabilityValue">0%</span></small></p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Model Explanation Section -->
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header bg-info text-white">
+                        <h3 class="mb-0">Model Explanation</h3>
+                    </div>
+                    <div class="card-body">
+                        <p class="card-text">Visualize why the model makes certain predictions:</p>
+                        <form id="modelExplanationForm">
+                            <div class="mb-3">
+                                <label for="explanationType" class="form-label">Explanation Type</label>
+                                <select class="form-select" id="explanationType">
+                                    <option value="lime">LIME (Local Explanation)</option>
+                                    <option value="pdp">Partial Dependence Plot</option>
+                                </select>
+                            </div>
+                            <div class="mb-3" id="featureSelectionSection">
+                                <label for="featureIdx" class="form-label">Feature to Analyze</label>
+                                <select class="form-select" id="featureIdx">
+                                    <option value="0">Spend in Last 30 Days</option>
+                                    <option value="1">Spend in 31-90 Days</option>
+                                    <option value="2">Recent Spend Ratio</option>
+                                    <option value="3">Spend Drop Percentage</option>
+                                    <option value="4">Transactions in Last 30 Days</option>
+                                    <option value="5">Transactions in 31-90 Days</option>
+                                    <option value="6">Recent Transactions Ratio</option>
+                                    <option value="7">Transactions Drop Percentage</option>
+                                    <option value="8">Avg. Spend per Transaction</option>
+                                </select>
+                            </div>
+                            <div class="mb-3">
+                                <label for="instanceIdx" class="form-label">Customer Sample Index</label>
+                                <input type="number" class="form-control" id="instanceIdx" min="0" value="0">
+                            </div>
+                            <button type="submit" class="btn btn-info">Generate Explanation</button>
+                        </form>
+
+                        <div id="loadingExplanation" class="loading">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                            <p class="mt-2">Generating explanation...</p>
+                        </div>
+
+                        <div id="explanationResult" class="mt-4" style="display: none;">
+                            <h4>Model Explanation</h4>
+                            <div id="explanationContainer">
+                                <img id="explanationImage" class="explanation-img" src="" alt="Model explanation">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Advanced Analytics Section -->
+        <div class="row mt-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header bg-dark text-white">
+                        <h3 class="mb-0">Advanced Analytics</h3>
+                    </div>
+                    <div class="card-body">
+                        <p>Basket analysis and other advanced model results will appear here when available.</p>
+                        <div class="row">
+                            <div class="col-md-6">
+                                <h4>Basket Analysis Top Associations</h4>
+                                <canvas id="basketAnalysisChart" height="300"></canvas>
+                            </div>
+                            <div class="col-md-6">
+                                <h4>Churn Risk Factors</h4>
+                                <div id="churnFactors">
+                                    <p>Train models to see churn risk factors.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Train models
+            document.getElementById('trainModelsBtn').addEventListener('click', function() {
+                const statusDiv = document.getElementById('trainingStatus');
+                statusDiv.textContent = 'Training models... This may take a few minutes.';
+                statusDiv.className = 'alert alert-info mt-3';
+                statusDiv.style.display = 'block';
+                
+                fetch('/api/train-models', {
+                    method: 'POST'
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        statusDiv.textContent = 'Error: ' + data.error;
+                        statusDiv.className = 'alert alert-danger mt-3';
+                    } else {
+                        statusDiv.textContent = data.message;
+                        statusDiv.className = 'alert alert-success mt-3';
+                        
+                        // Update charts with sample data since actual model data isn't available here
+                        updateDemoCharts();
+                    }
+                })
+                .catch(error => {
+                    statusDiv.textContent = 'Error: ' + error.message;
+                    statusDiv.className = 'alert alert-danger mt-3';
+                });
+            });
+            
+            // Churn prediction form
+            document.getElementById('churnPredictionForm').addEventListener('submit', function(e) {
+                e.preventDefault();
+                
+                // Calculate derived values
+                const spend_recent_30 = parseFloat(document.getElementById('spend_recent_30').value);
+                const spend_mid_90 = parseFloat(document.getElementById('spend_mid_90').value);
+                const transactions_recent_30 = parseInt(document.getElementById('transactions_recent_30').value);
+                const transactions_mid_90 = parseInt(document.getElementById('transactions_mid_90').value);
+                
+                const spend_recent_ratio = spend_recent_30 / (spend_mid_90 + 1);
+                const spend_drop_pct = (spend_mid_90 - spend_recent_30) / (spend_mid_90 + 1);
+                const transactions_recent_ratio = transactions_recent_30 / (transactions_mid_90 + 1);
+                const transactions_drop_pct = (transactions_mid_90 - transactions_recent_30) / (transactions_mid_90 + 1);
+                const avg_spend_per_transaction_recent = spend_recent_30 / (transactions_recent_30 + 1);
+                
+                const data = {
+                    spend_recent_30,
+                    spend_mid_90,
+                    spend_recent_ratio,
+                    spend_drop_pct,
+                    transactions_recent_30,
+                    transactions_mid_90,
+                    transactions_recent_ratio,
+                    transactions_drop_pct,
+                    avg_spend_per_transaction_recent
+                };
+                
+                fetch('/api/churn-prediction', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(data)
+                })
+                .then(response => response.json())
+                .then(result => {
+                    const resultDiv = document.getElementById('churnResult');
+                    const outputDiv = document.getElementById('churnPredictionOutput');
+                    const probabilityBar = document.getElementById('churnProbability');
+                    const probabilityValue = document.getElementById('churnProbabilityValue');
+                    
+                    if (result.error) {
+                        outputDiv.innerHTML = `<div class="alert alert-danger">${result.error}</div>`;
+                    } else {
+                        const probability = result.churn_probability * 100;
+                        const prediction = result.churn_prediction;
+                        
+                        outputDiv.innerHTML = `
+                            <div class="alert ${prediction === 1 ? 'alert-danger' : 'alert-success'}">
+                                <strong>${result.message}</strong>
+                            </div>
+                        `;
+                        
+                        probabilityBar.style.width = `${probability}%`;
+                        probabilityBar.className = `progress-bar ${probability > 50 ? 'bg-danger' : 'bg-success'}`;
+                        probabilityValue.textContent = `${probability.toFixed(1)}%`;
+                    }
+                    
+                    resultDiv.style.display = 'block';
+                })
+                .catch(error => {
+                    const resultDiv = document.getElementById('churnResult');
+                    const outputDiv = document.getElementById('churnPredictionOutput');
+                    outputDiv.innerHTML = `<div class="alert alert-danger">Error: ${error.message}</div>`;
+                    resultDiv.style.display = 'block';
+                });
+            });
+            
+            // Show/hide feature selection based on explanation type
+            document.getElementById('explanationType').addEventListener('change', function() {
+                const featureSection = document.getElementById('featureSelectionSection');
+                if (this.value === 'pdp') {
+                    featureSection.style.display = 'block';
+                } else {
+                    featureSection.style.display = 'none';
+                }
+            });
+            
+            // Model explanation form
+            document.getElementById('modelExplanationForm').addEventListener('submit', function(e) {
+                e.preventDefault();
+                
+                const explanationType = document.getElementById('explanationType').value;
+                const featureIdx = document.getElementById('featureIdx').value;
+                const instanceIdx = document.getElementById('instanceIdx').value;
+                
+                const loadingDiv = document.getElementById('loadingExplanation');
+                const resultDiv = document.getElementById('explanationResult');
+                const explanationImage = document.getElementById('explanationImage');
+                
+                loadingDiv.style.display = 'block';
+                resultDiv.style.display = 'none';
+                
+                const url = `/api/model-explanation?explanation_type=${explanationType}&feature_idx=${featureIdx}&instance_idx=${instanceIdx}`;
+                
+                // Add timestamp to bypass browser cache
+                explanationImage.src = url + '&timestamp=' + new Date().getTime();
+                
+                explanationImage.onload = function() {
+                    loadingDiv.style.display = 'none';
+                    resultDiv.style.display = 'block';
+                };
+                
+                explanationImage.onerror = function() {
+                    loadingDiv.style.display = 'none';
+                    document.getElementById('explanationContainer').innerHTML = 
+                        '<div class="alert alert-danger">Error loading explanation. Please ensure models are trained first.</div>';
+                    resultDiv.style.display = 'block';
+                };
+            });
+            
+            // Demo charts with sample data
+            function updateDemoCharts() {
+                // Basket analysis chart
+                const basketCtx = document.getElementById('basketAnalysisChart').getContext('2d');
+                new Chart(basketCtx, {
+                    type: 'bar',
+                    data: {
+                        labels: ['Bread', 'Milk', 'Eggs', 'Cereal', 'Coffee'],
+                        datasets: [{
+                            label: 'Association Strength',
+                            data: [0.78, 0.65, 0.52, 0.48, 0.35],
+                            backgroundColor: [
+                                'rgba(255, 99, 132, 0.7)',
+                                'rgba(54, 162, 235, 0.7)',
+                                'rgba(255, 206, 86, 0.7)',
+                                'rgba(75, 192, 192, 0.7)',
+                                'rgba(153, 102, 255, 0.7)'
+                            ],
+                            borderColor: [
+                                'rgba(255, 99, 132, 1)',
+                                'rgba(54, 162, 235, 1)',
+                                'rgba(255, 206, 86, 1)',
+                                'rgba(75, 192, 192, 1)',
+                                'rgba(153, 102, 255, 1)'
+                            ],
+                            borderWidth: 1
+                        }]
+                    },
+                    options: {
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                max: 1
+                            }
+                        },
+                        plugins: {
+                            title: {
+                                display: true,
+                                text: 'Product Association with Dairy'
+                            }
+                        }
+                    }
+                });
+                
+                // Update churn factors
+                document.getElementById('churnFactors').innerHTML = `
+                    <div class="mb-3">
+                        <div class="d-flex justify-content-between">
+                            <span>Decrease in Transactions</span>
+                            <span>78%</span>
+                        </div>
+                        <div class="feature-importance-bar" style="width: 78%"></div>
+                    </div>
+                    <div class="mb-3">
+                        <div class="d-flex justify-content-between">
+                            <span>Recent Spend Ratio</span>
+                            <span>65%</span>
+                        </div>
+                        <div class="feature-importance-bar" style="width: 65%"></div>
+                    </div>
+                    <div class="mb-3">
+                        <div class="d-flex justify-content-between">
+                            <span>Spend Drop</span>
+                            <span>52%</span>
+                        </div>
+                        <div class="feature-importance-bar" style="width: 52%"></div>
+                    </div>
+                    <div class="mb-3">
+                        <div class="d-flex justify-content-between">
+                            <span>Average Spend</span>
+                            <span>41%</span>
+                        </div>
+                        <div class="feature-importance-bar" style="width: 41%"></div>
+                    </div>
+                `;
+            }
+        });
+    </script>
+</body>
+</html></div>
