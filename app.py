@@ -18,7 +18,9 @@ from sklearn.inspection import PartialDependenceDisplay
 from sklearn.model_selection import train_test_split
 from sklearn.model_selection import train_test_split
 import traceback
+import matplotlib.pyplot as plt
 
+import matplotlib
 app = Flask(__name__)
 
 
@@ -610,6 +612,8 @@ def model_explanation():
         
         # Generate explanation
         if explanation_type == 'lime':
+
+            matplotlib.use('Agg')  # Set backend before importing pyplot
             explainer = LimeTabularExplainer(
                 training_data=X_train_scaled,
                 feature_names=feature_cols,
@@ -622,18 +626,14 @@ def model_explanation():
                 model.predict_proba,
                 num_features=5
             )
-            plt = exp.as_pyplot_figure()
-            
-            # Generate the plot
-            # plt.figure(figsize=(10, 6))
-            exp.as_pyplot_figure()
+            fig = exp.as_pyplot_figure()
             plt.tight_layout()
             
             # Save to buffer
             img_buf = io.BytesIO()
-            plt.savefig(img_buf, format='png')
+            fig.savefig(img_buf, format='png')
             img_buf.seek(0)
-            # plt.close()
+            plt.close(fig)  # Explicitly close the figure
             
             return send_file(img_buf, mimetype='image/png')
             
@@ -651,9 +651,9 @@ def model_explanation():
             )
             
             plt.tight_layout()
-            img_buf = io.BytesIO()
-            plt.savefig(img_buf, format='png')
+            fig.savefig(img_buf, format='png')
             img_buf.seek(0)
+            plt.close(fig)  # Explicitly close the figure
             # plt.close()
             
             return send_file(img_buf, mimetype='image/png')
@@ -831,4 +831,4 @@ def index():
 if __name__ == '__main__':
     global LOGGEDIN
     LOGGEDIN = False
-    app.run(debug=True)
+    app.run(debug=True,port=5001)
