@@ -819,7 +819,7 @@ def login():
         password = data.get('password')
 
         if username == 'admin' and password == 'password123':
-            session['logged_in'] = True
+            app.config['logged_in'] = True
             return jsonify({'message': 'Logged in successfully!'}), 200
         else:
             return jsonify({'message': 'Invalid credentials'}), 401
@@ -834,7 +834,7 @@ def login_page():
  
 @app.route('/logout')
 def logout():
-    session.pop('logged_in', None)
+    app.config['logged_in'] = False
     return redirect(url_for('login_page'))
  
  # ==================================
@@ -842,7 +842,7 @@ def logout():
  # ==================================
 @app.route('/')
 def index():
-    if not session.get('logged_in'):
+    if not app.config['logged_in']:
         return redirect(url_for('login_page'))
     return render_template('index.html')
  
@@ -851,5 +851,5 @@ def index():
  # ==================================
 if __name__ == '__main__':
     app.secret_key = os.urandom(24)
-    app.config['SESSION_TYPE'] = 'filesystem'
+    app.config['logged_in'] = False
     app.run()
