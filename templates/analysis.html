@@ -8,6 +8,20 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://d3js.org/d3.v7.min.js"></script>
     <style>
+        :root {
+            --bs-primary: #6366f1;
+            --bs-secondary: #4f46e5;
+            --bs-light: #f8f9fa;
+            --bs-dark: #1e1e2d;
+        }
+
+        .analytics-header {
+            background: linear-gradient(135deg, var(--bs-dark) 0%, var(--bs-secondary) 100%);
+            color: white;
+            padding: 2rem 0;
+            margin-bottom: 2rem;
+        }
+        
         .chart-container {
             position: relative;
             height: 400px;
@@ -29,7 +43,7 @@
     </style>
 </head>
 <body>
-    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+    <nav class="analytics-header">
         <div class="container">
             <a class="navbar-brand" href="/">Consumer Data Analytics</a>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
@@ -53,30 +67,6 @@
 
     <div class="container mt-4">
         <h1 class="mb-4">Data Analysis Dashboard</h1>
-        
-        <!-- Demographics Impact Section -->
-        <div class="dashboard-section">
-            <h2>Demographics Impact on Spending</h2>
-            <div class="row">
-                <div class="col-md-6">
-                    <div class="chart-container">
-                        <canvas id="incomeChart"></canvas>
-                    </div>
-                </div>
-                <div class="col-md-6">
-                    <div class="chart-container">
-                        <canvas id="familyChart"></canvas>
-                    </div>
-                </div>
-            </div>
-            <div class="row">
-                <div class="col-md-12">
-                    <div class="chart-container">
-                        <canvas id="locationChart"></canvas>
-                    </div>
-                </div>
-            </div>
-        </div>
         
         <!-- Engagement Over Time Section -->
         <div class="dashboard-section">
