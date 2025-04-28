@@ -1,34 +1,33 @@
 import os
 import csv
-from flask import Flask, render_template, request, jsonify
+import io
 import pyodbc
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.preprocessing import StandardScaler
 import numpy as np
 import pandas as pd
 import joblib
 import pickle
-from flask import send_file
-import io
-from sklearn.preprocessing import MultiLabelBinarizer
 import shap
 import lime
+from flask import Flask, render_template, request, jsonify, send_file, session, redirect, url_for
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.preprocessing import StandardScaler, MultiLabelBinarizer
+from sklearn.model_selection import train_test_split
 from lime.lime_tabular import LimeTabularExplainer
 from sklearn.inspection import PartialDependenceDisplay
-from sklearn.model_selection import train_test_split
-from sklearn.model_selection import train_test_split
 
+# ==================================
+# App and Configuration
+# ==================================
 app = Flask(__name__)
-
+app.secret_key = os.getenv('FLASK_SECRET_KEY', 'your-secret-key-here')  # Secret key for session management
 
 # Models directory
 MODELS_DIR = 'models'
 os.makedirs(MODELS_DIR, exist_ok=True)
 
-
-# ========================
+# ==================================
 # Database Configuration
-# ========================
+# ==================================
 CONN_STR = (
     "Driver={ODBC Driver 17 for SQL Server};"
     "Server=tcp:final-project-server2025.database.windows.net,1433;"
@@ -45,14 +44,16 @@ def get_connection():
         print(f"Database connection error: {str(e)}")
         raise
 
-# ========================
-# Data Loading Functionality
-# ========================
+# ==================================
+# Upload Data
+# ==================================
 @app.route('/upload', methods=['GET', 'POST'])
 def upload_data():
+    if not session.get('logged_in'):
+        return redirect(url_for('login'))
+
     if request.method == 'POST':
         try:
-            # Get uploaded files
             transactions_file = request.files['transactions']
             households_file = request.files['households']
             products_file = request.files['products']
@@ -60,15 +61,15 @@ def upload_data():
             conn = get_connection()
             cursor = conn.cursor()
 
-            # Load Transactions
+            # Transactions
             cursor.execute("TRUNCATE TABLE transactions")
             transactions = list(csv.reader(transactions_file.read().decode('utf-8').splitlines()))
             cursor.executemany(
                 "INSERT INTO transactions VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                transactions[1:]  # Skip header
+                transactions[1:]
             )
 
-            # Load Households
+            # Households
             cursor.execute("TRUNCATE TABLE household")
             households = list(csv.reader(households_file.read().decode('utf-8').splitlines()))
             cursor.executemany(
@@ -76,7 +77,7 @@ def upload_data():
                 households[1:]
             )
 
-            # Load Products
+            # Products
             cursor.execute("TRUNCATE TABLE products")
             products = list(csv.reader(products_file.read().decode('utf-8').splitlines()))
             cursor.executemany(
@@ -96,11 +97,13 @@ def upload_data():
 
     return render_template('upload.html')
 
-# ========================
-# Data Analysis Functionality
-# ========================
+# ==================================
+# Data Analysis APIs
+# ==================================
 @app.route('/analysis', methods=['GET'])
 def analysis():
+    if not session.get('logged_in'):
+        return redirect(url_for('login'))
     return render_template('analysis.html')
 
 @app.route('/api/demographic-engagement', methods=['GET'])
@@ -108,8 +111,7 @@ def demographic_engagement():
     try:
         conn = get_connection()
         cursor = conn.cursor()
-        
-        # Query to analyze demographics impact on spending
+
         query = """
         SELECT 
             h.INCOME_RANGE, 
@@ -140,8 +142,7 @@ def engagement_over_time():
     try:
         conn = get_connection()
         cursor = conn.cursor()
-        
-        # Query for spending trends over time
+
         query = """
         SELECT 
             t.YEAR, 
@@ -166,14 +167,12 @@ def engagement_over_time():
         cursor.close()
         conn.close()
 
-
 @app.route('/api/seasonal-trends', methods=['GET'])
 def seasonal_trends():
     try:
         conn = get_connection()
         cursor = conn.cursor()
-        
-        # Query for seasonal patterns
+
         query = """
         SELECT 
             t.WEEK_NUM, 
@@ -202,6 +201,7 @@ def brand_preferences():
     try:
         conn = get_connection()
         cursor = conn.cursor()
+
         query = """
         SELECT 
             p.DEPARTMENT, 
@@ -224,15 +224,21 @@ def brand_preferences():
     finally:
         cursor.close()
         conn.close()
-# ========================
+
+# ==================================
 # Interactive Search
-# ========================
+# ==================================
 @app.route('/search', methods=['GET'])
 def search():
+    if not session.get('logged_in'):
+        return redirect(url_for('login_page'))  # Updated to correct login page route
+
     hshd_num = request.args.get('hshd_num')
     if not hshd_num:
         return jsonify({'error': 'HSHD_NUM parameter required'}), 400
 
+    conn = None
+    cursor = None
     try:
         conn = get_connection()
         cursor = conn.cursor()
@@ -250,38 +256,64 @@ def search():
         ORDER BY h.HSHD_NUM, t.BASKET_NUM, t.DATE, 
                  t.PRODUCT_NUM, p.DEPARTMENT, p.COMMODITY
         """
-        
+
         cursor.execute(query, hshd_num)
         columns = [column[0] for column in cursor.description]
         results = [dict(zip(columns, row)) for row in cursor.fetchall()]
         
         return jsonify(results)
-    
+
     except pyodbc.Error as e:
         return jsonify({'error': str(e)}), 500
     finally:
-        cursor.close()
-        conn.close()
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
 
+
+# ==================================
+# Authentication: Login / Logout
+# ==================================
 @app.route('/api/login', methods=['POST'])
 def login():
-    global LOGGEDIN
-    LOGGEDIN = True
     try:
-        return jsonify({'message': 'Log in  successfully!'})
+        data = request.get_json()  # <- This reads JSON body
+
+        username = data.get('username')
+        password = data.get('password')
+
+        if username == 'admin' and password == 'password123':
+            session['logged_in'] = True
+            return jsonify({'message': 'Logged in successfully!'}), 200
+        else:
+            return jsonify({'message': 'Invalid credentials'}), 401
+
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-# ========================
-# HTML Templates
-# ========================
+
+@app.route('/login', methods=['GET'])
+def login_page():
+    return render_template('login.html')
+
+@app.route('/logout')
+def logout():
+    session.pop('logged_in', None)
+    return redirect(url_for('login_page'))
+
+
+# ==================================
+# Home Page
+# ==================================
 @app.route('/')
 def index():
-    if(LOGGEDIN):
-        return render_template('index.html')
-    else:
-        return render_template('login.html')
+    if not session.get('logged_in'):
+        return redirect(url_for('login_page'))
+    return render_template('index.html')
+
+# ==================================
+# Main
+# ==================================
 if __name__ == '__main__':
-    global LOGGEDIN
-    LOGGEDIN = False
     app.run(debug=True)
