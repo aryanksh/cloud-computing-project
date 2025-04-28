@@ -342,7 +342,7 @@
                 loadingDiv.style.display = 'block';
                 resultDiv.style.display = 'none';
                 
-                const url = `/api/model-explanation?explanation_type=${explanationType}&feature_idx=${featureIdx}&instance_idx=${instanceIdx}`;
+                const url = `/api/modelexplanation?explanation_type=${explanationType}&feature_idx=${featureIdx}&instance_idx=${instanceIdx}`;
                 
                 // Add timestamp to bypass browser cache
                 explanationImage.src = url + '&timestamp=' + new Date().getTime();

@@ -14,10 +14,14 @@ from sklearn.preprocessing import StandardScaler, MultiLabelBinarizer
 from sklearn.model_selection import train_test_split
 from lime.lime_tabular import LimeTabularExplainer
 from sklearn.inspection import PartialDependenceDisplay
+import matplotlib.pyplot as plt
+import matplotlib
+
 
 # ==================================
 # App and Configuration
 # ==================================
+matplotlib.use('Agg')
 app = Flask(__name__)
 app.secret_key = os.getenv('FLASK_SECRET_KEY', 'your-secret-key-here')  # Secret key for session management
 
@@ -500,11 +504,32 @@ def model_explanation():
         
         # Query to get data for churn calculation
         query = """
-        SELECT TOP 100 *
-        FROM transactions t
-        JOIN household h ON t.HSHD_NUM = h.HSHD_NUM
-        JOIN products p ON t.PRODUCT_NUM = p.PRODUCT_NUM
-        ORDER BY t.HSHD_NUM
+SELECT
+    t.BASKET_NUM,
+    t.HSHD_NUM,
+    t.DATE,
+    t.PRODUCT_NUM,
+    t.SPEND,
+    t.UNITS,
+    t.STORE_R,
+    t.WEEK_NUM,
+    t.YEAR,
+    h.L,
+    h.AGE_RANGE,
+    h.MARITAL,
+    h.INCOME_RANGE,
+    h.HOMEOWNER,
+    h.HSHD_COMPOSITION,
+    h.HH_SIZE,
+    h.CHILDREN,
+    p.DEPARTMENT,
+    p.COMMODITY,
+    p.BRAND_TY,
+    p.NATURAL_ORGANIC_FLAG
+FROM transactions t
+LEFT JOIN household h ON t.HSHD_NUM = h.HSHD_NUM
+LEFT JOIN products p ON t.PRODUCT_NUM = p.PRODUCT_NUM
+
         """
         cursor.execute(query)
         rows = cursor.fetchall()
@@ -517,24 +542,24 @@ def model_explanation():
         
         # Prepare data similar to train_churn_model function
         df.columns = df.columns.str.strip()
-        df['PURCHASE_'] = pd.to_datetime(df['DATE'], errors='coerce')
+        df['PURCHASE'] = pd.to_datetime(df['DATE'], errors='coerce')
         
         # Get a test sample
         household_sample = df['HSHD_NUM'].unique()[instance_idx % len(df['HSHD_NUM'].unique())]
         household_data = df[df['HSHD_NUM'] == household_sample]
         
         # Create features
-        dataset_end_date = df['PURCHASE_'].max()
+        dataset_end_date = df['PURCHASE'].max()
         last_30_days = dataset_end_date - pd.Timedelta(days=30)
         days_31_to_90 = dataset_end_date - pd.Timedelta(days=90)
         
         # Calculate the features for this household
-        recent_spend = household_data[household_data['PURCHASE_'] >= last_30_days]['SPEND'].sum()
-        mid_spend = household_data[(household_data['PURCHASE_'] >= days_31_to_90) & 
-                                    (household_data['PURCHASE_'] < last_30_days)]['SPEND'].sum()
-        recent_transactions = household_data[household_data['PURCHASE_'] >= last_30_days]['BASKET_NUM'].nunique()
-        mid_transactions = household_data[(household_data['PURCHASE_'] >= days_31_to_90) & 
-                                            (household_data['PURCHASE_'] < last_30_days)]['BASKET_NUM'].nunique()
+        recent_spend = household_data[household_data['PURCHASE'] >= last_30_days]['SPEND'].sum()
+        mid_spend = household_data[(household_data['PURCHASE'] >= days_31_to_90) & 
+                                    (household_data['PURCHASE'] < last_30_days)]['SPEND'].sum()
+        recent_transactions = household_data[household_data['PURCHASE'] >= last_30_days]['BASKET_NUM'].nunique()
+        mid_transactions = household_data[(household_data['PURCHASE'] >= days_31_to_90) & 
+                                            (household_data['PURCHASE'] < last_30_days)]['BASKET_NUM'].nunique()
         
         spend_recent_ratio = recent_spend / (mid_spend + 1)
         spend_drop_pct = (mid_spend - recent_spend) / (mid_spend + 1)
