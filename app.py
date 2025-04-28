@@ -1,6 +1,6 @@
 import os
 import csv
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, send_file, session, redirect, url_for
 import pyodbc
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.preprocessing import StandardScaler
@@ -812,23 +812,43 @@ def search():
 
 @app.route('/api/login', methods=['POST'])
 def login():
-    global LOGGEDIN
-    LOGGEDIN = True
     try:
-        return jsonify({'message': 'Log in  successfully!'})
+        data = request.get_json()  # <- This reads JSON body
+
+        username = data.get('username')
+        password = data.get('password')
+
+        if username == 'admin' and password == 'password123':
+            session['logged_in'] = True
+            return jsonify({'message': 'Logged in successfully!'}), 200
+        else:
+            return jsonify({'message': 'Invalid credentials'}), 401
+
     except Exception as e:
         return jsonify({'error': str(e)}), 500
-
-# ========================
-# HTML Templates
-# ========================
+ 
+ 
+@app.route('/login', methods=['GET'])
+def login_page():
+    return render_template('login.html')
+ 
+@app.route('/logout')
+def logout():
+    session.pop('logged_in', None)
+    return redirect(url_for('login_page'))
+ 
+ 
+ # ==================================
+ # Home Page
+ # ==================================
 @app.route('/')
 def index():
-    if(LOGGEDIN):
-        return render_template('index.html')
-    else:
-        return render_template('login.html')
+    if not session.get('logged_in'):
+        return redirect(url_for('login_page'))
+    return render_template('index.html')
+ 
+ # ==================================
+ # Main
+ # ==================================
 if __name__ == '__main__':
-    global LOGGEDIN
-    LOGGEDIN = False
-    app.run(debug=True)
+    app.run(debug=True,port=5001)
