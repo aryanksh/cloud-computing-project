@@ -1,37 +1,35 @@
 import os
 import csv
-import io
+from flask import Flask, render_template, request, jsonify
 import pyodbc
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.preprocessing import StandardScaler
 import numpy as np
 import pandas as pd
 import joblib
 import pickle
+from flask import send_file
+import io
+from sklearn.preprocessing import MultiLabelBinarizer
 import shap
 import lime
-from flask import Flask, render_template, request, jsonify, send_file, session, redirect, url_for
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.preprocessing import StandardScaler, MultiLabelBinarizer
-from sklearn.model_selection import train_test_split
 from lime.lime_tabular import LimeTabularExplainer
 from sklearn.inspection import PartialDependenceDisplay
-import matplotlib.pyplot as plt
-import matplotlib
+from sklearn.model_selection import train_test_split
+from sklearn.model_selection import train_test_split
+import traceback
 
-
-# ==================================
-# App and Configuration
-# ==================================
-matplotlib.use('Agg')
 app = Flask(__name__)
-app.secret_key = os.getenv('FLASK_SECRET_KEY', 'your-secret-key-here')  # Secret key for session management
+
 
 # Models directory
 MODELS_DIR = 'models'
 os.makedirs(MODELS_DIR, exist_ok=True)
 
-# ==================================
+
+# ========================
 # Database Configuration
-# ==================================
+# ========================
 CONN_STR = (
     "Driver={ODBC Driver 17 for SQL Server};"
     "Server=tcp:final-project-server2025.database.windows.net,1433;"
@@ -48,16 +46,14 @@ def get_connection():
         print(f"Database connection error: {str(e)}")
         raise
 
-# ==================================
-# Upload Data
-# ==================================
+# ========================
+# Data Loading Functionality
+# ========================
 @app.route('/upload', methods=['GET', 'POST'])
 def upload_data():
-    if not session.get('logged_in'):
-        return redirect(url_for('login'))
-
     if request.method == 'POST':
         try:
+            # Get uploaded files
             transactions_file = request.files['transactions']
             households_file = request.files['households']
             products_file = request.files['products']
@@ -65,15 +61,15 @@ def upload_data():
             conn = get_connection()
             cursor = conn.cursor()
 
-            # Transactions
+            # Load Transactions
             cursor.execute("TRUNCATE TABLE transactions")
             transactions = list(csv.reader(transactions_file.read().decode('utf-8').splitlines()))
             cursor.executemany(
                 "INSERT INTO transactions VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                transactions[1:]
+                transactions[1:]  # Skip header
             )
 
-            # Households
+            # Load Households
             cursor.execute("TRUNCATE TABLE household")
             households = list(csv.reader(households_file.read().decode('utf-8').splitlines()))
             cursor.executemany(
@@ -81,7 +77,7 @@ def upload_data():
                 households[1:]
             )
 
-            # Products
+            # Load Products
             cursor.execute("TRUNCATE TABLE products")
             products = list(csv.reader(products_file.read().decode('utf-8').splitlines()))
             cursor.executemany(
@@ -101,23 +97,20 @@ def upload_data():
 
     return render_template('upload.html')
 
-# ==================================
-# Data Analysis APIs
-# ==================================
+# ========================
+# Data Analysis Functionality
+# ========================
 @app.route('/analysis', methods=['GET'])
 def analysis():
-    if not session.get('logged_in'):
-        return redirect(url_for('login'))
     return render_template('analysis.html')
 
 @app.route('/api/demographic-engagement', methods=['GET'])
 def demographic_engagement():
-    conn = None
-    cursor = None
     try:
         conn = get_connection()
         cursor = conn.cursor()
-
+        
+        # Query to analyze demographics impact on spending
         query = """
         SELECT 
             h.INCOME_RANGE, 
@@ -140,19 +133,16 @@ def demographic_engagement():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
     finally:
-        if cursor:
-            cursor.close()
-        if conn:
-            conn.close()
+        cursor.close()
+        conn.close()
 
 @app.route('/api/engagement-over-time', methods=['GET'])
 def engagement_over_time():
-    cursor = None
-    conn = None
     try:
         conn = get_connection()
         cursor = conn.cursor()
-
+        
+        # Query for spending trends over time
         query = """
         SELECT 
             t.YEAR, 
@@ -174,19 +164,15 @@ def engagement_over_time():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
     finally:
-        if cursor:
-            cursor.close()
-        if conn:
-            conn.close()
+        cursor.close()
+        conn.close()
 
 @app.route('/api/basket-analysis', methods=['GET'])
 def basket_analysis():
-    conn = None
-    cursor = None
     try:
         conn = get_connection()
         cursor = conn.cursor()
-
+        
         # Query to find frequent product combinations
         query = """
         SELECT 
@@ -205,19 +191,17 @@ def basket_analysis():
         cursor.execute(query)
         columns = [column[0] for column in cursor.description]
         results = [dict(zip(columns, row)) for row in cursor.fetchall()[:100]]  # Limit to top 100
-
+        
         return jsonify(results)
     except Exception as e:
         return jsonify({'error': str(e)}), 500
     finally:
-        if cursor:
-            cursor.close()
-        if conn:
-            conn.close()
+        cursor.close()
+        conn.close()
 
 # ========================
- # Machine Learning Models
- # =========================
+# Machine Learning Models
+# =========================
 @app.route('/models', methods=['GET'])
 def models():
     return render_template('models.html')
@@ -493,139 +477,193 @@ def model_explanation():
         instance_idx = int(request.args.get('instance_idx', 0))
         explanation_type = request.args.get('explanation_type', 'lime')
         
-        # Load model and data
-        model = joblib.load(os.path.join(MODELS_DIR, 'churn_model.pkl'))
-        scaler = joblib.load(os.path.join(MODELS_DIR, 'churn_scaler.pkl'))
-        feature_cols = pickle.load(open(os.path.join(MODELS_DIR, 'feature_cols.pkl'), 'rb'))
-        
-        # Get a sample from database for explanation
+        # Connect to database and get transactions data
         conn = get_connection()
         cursor = conn.cursor()
         
-        # Query to get data for churn calculation
-        query = """
-SELECT
-    t.BASKET_NUM,
-    t.HSHD_NUM,
-    t.DATE,
-    t.PRODUCT_NUM,
-    t.SPEND,
-    t.UNITS,
-    t.STORE_R,
-    t.WEEK_NUM,
-    t.YEAR,
-    h.L,
-    h.AGE_RANGE,
-    h.MARITAL,
-    h.INCOME_RANGE,
-    h.HOMEOWNER,
-    h.HSHD_COMPOSITION,
-    h.HH_SIZE,
-    h.CHILDREN,
-    p.DEPARTMENT,
-    p.COMMODITY,
-    p.BRAND_TY,
-    p.NATURAL_ORGANIC_FLAG
-FROM transactions t
-LEFT JOIN household h ON t.HSHD_NUM = h.HSHD_NUM
-LEFT JOIN products p ON t.PRODUCT_NUM = p.PRODUCT_NUM
-
+        # Get transactions data
+        transactions_query = """
+        SELECT * FROM transactions
         """
-        cursor.execute(query)
-        rows = cursor.fetchall()
-        columns = [column[0] for column in cursor.description]
-        df = pd.DataFrame.from_records(rows, columns=columns)
+        cursor.execute(transactions_query)
+        transactions_rows = cursor.fetchall()
+        transactions_cols = [column[0] for column in cursor.description]
+        transactions = pd.DataFrame.from_records(transactions_rows, columns=transactions_cols)
         
-        # Close connection
+        # Get households data
+        households_query = """
+        SELECT * FROM household
+        """
+        cursor.execute(households_query)
+        households_rows = cursor.fetchall()
+        households_cols = [column[0] for column in cursor.description]
+        households = pd.DataFrame.from_records(households_rows, columns=households_cols)
+        
+        # Get products data
+        products_query = """
+        SELECT * FROM products
+        """
+        cursor.execute(products_query)
+        products_rows = cursor.fetchall()
+        products_cols = [column[0] for column in cursor.description]
+        products = pd.DataFrame.from_records(products_rows, columns=products_cols)
+        
         cursor.close()
         conn.close()
         
-        # Prepare data similar to train_churn_model function
-        df.columns = df.columns.str.strip()
-        df['PURCHASE'] = pd.to_datetime(df['DATE'], errors='coerce')
+        # Clean column names
+        transactions.columns = transactions.columns.str.strip()
+        households.columns = households.columns.str.strip()
+        products.columns = products.columns.str.strip()
         
-        # Get a test sample
-        household_sample = df['HSHD_NUM'].unique()[instance_idx % len(df['HSHD_NUM'].unique())]
-        household_data = df[df['HSHD_NUM'] == household_sample]
+        # Convert date
+        transactions['PURCHASE_'] = transactions['DATE']
+        transactions['PURCHASE_'] = pd.to_datetime(transactions['PURCHASE_'], errors='coerce')
         
-        # Create features
-        dataset_end_date = df['PURCHASE'].max()
+        # Merge datasets
+        transactions_households = transactions.merge(households, on='HSHD_NUM', how='left')
+        full_data = transactions_households.merge(products, on='PRODUCT_NUM', how='left')
+        
+        # Dataset reference end date - use max date from transactions
+        dataset_end_date = transactions['PURCHASE_'].max()
+        
+        # Define date windows
         last_30_days = dataset_end_date - pd.Timedelta(days=30)
         days_31_to_90 = dataset_end_date - pd.Timedelta(days=90)
         
-        # Calculate the features for this household
-        recent_spend = household_data[household_data['PURCHASE'] >= last_30_days]['SPEND'].sum()
-        mid_spend = household_data[(household_data['PURCHASE'] >= days_31_to_90) & 
-                                    (household_data['PURCHASE'] < last_30_days)]['SPEND'].sum()
-        recent_transactions = household_data[household_data['PURCHASE'] >= last_30_days]['BASKET_NUM'].nunique()
-        mid_transactions = household_data[(household_data['PURCHASE'] >= days_31_to_90) & 
-                                            (household_data['PURCHASE'] < last_30_days)]['BASKET_NUM'].nunique()
+        # Recent 30-day spend and transactions
+        recent_30 = full_data[(full_data['PURCHASE_'] >= last_30_days) & (full_data['PURCHASE_'] <= dataset_end_date)]
+        recent_agg = recent_30.groupby('HSHD_NUM').agg(
+            spend_recent_30=('SPEND', 'sum'),
+            transactions_recent_30=('BASKET_NUM', 'nunique')
+        ).reset_index()
         
-        spend_recent_ratio = recent_spend / (mid_spend + 1)
-        spend_drop_pct = (mid_spend - recent_spend) / (mid_spend + 1)
-        transactions_recent_ratio = recent_transactions / (mid_transactions + 1)
-        transactions_drop_pct = (mid_transactions - recent_transactions) / (mid_transactions + 1)
-        avg_spend_per_transaction = recent_spend / (recent_transactions + 1)
+        # 31–90 day spend and transactions
+        mid_90 = full_data[(full_data['PURCHASE_'] >= days_31_to_90) & (full_data['PURCHASE_'] < last_30_days)]
+        mid_agg = mid_90.groupby('HSHD_NUM').agg(
+            spend_mid_90=('SPEND', 'sum'),
+            transactions_mid_90=('BASKET_NUM', 'nunique')
+        ).reset_index()
         
-        # Create feature vector
-        X_test = np.array([[
-            recent_spend, mid_spend, spend_recent_ratio, spend_drop_pct,
-            recent_transactions, mid_transactions, transactions_recent_ratio, 
-            transactions_drop_pct, avg_spend_per_transaction
-        ]])
+        # Lifetime aggregates
+        lifetime_agg = full_data.groupby('HSHD_NUM').agg(
+            spend_lifetime=('SPEND', 'sum'),
+            transactions_lifetime=('BASKET_NUM', 'nunique'),
+            first_purchase=('PURCHASE_', 'min'),
+            last_purchase=('PURCHASE_', 'max')
+        ).reset_index()
         
+        # Merge all
+        behavior = lifetime_agg.merge(recent_agg, on='HSHD_NUM', how='left')
+        behavior = behavior.merge(mid_agg, on='HSHD_NUM', how='left')
+        
+        # Fill missing values
+        behavior = behavior.fillna(0)
+        
+        # Recent engagement ratios
+        behavior['spend_recent_ratio'] = behavior['spend_recent_30'] / (behavior['spend_mid_90'] + 1)
+        behavior['transactions_recent_ratio'] = behavior['transactions_recent_30'] / (behavior['transactions_mid_90'] + 1)
+        
+        # Drop rates
+        behavior['spend_drop_pct'] = (behavior['spend_mid_90'] - behavior['spend_recent_30']) / (behavior['spend_mid_90'] + 1)
+        behavior['transactions_drop_pct'] = (behavior['transactions_mid_90'] - behavior['transactions_recent_30']) / (behavior['transactions_mid_90'] + 1)
+        
+        # Recent monetary per transaction
+        behavior['avg_spend_per_transaction_recent'] = behavior['spend_recent_30'] / (behavior['transactions_recent_30'] + 1)
+        
+        # Churn = major drop (> 80% spend drop) OR no recent activity
+        behavior['churn'] = np.where(
+            (behavior['spend_drop_pct'] > 0.8) | (behavior['transactions_recent_30'] == 0),
+            1, 0
+        )
+        
+        # Feature Selection
+        feature_cols = [
+            'spend_recent_30', 'spend_mid_90', 'spend_recent_ratio', 'spend_drop_pct',
+            'transactions_recent_30', 'transactions_mid_90', 'transactions_recent_ratio',
+            'transactions_drop_pct', 'avg_spend_per_transaction_recent'
+        ]
+        
+        X = behavior[feature_cols].values
+        y = behavior['churn'].values
+        
+        # Train/Test Split
+        X_train, X_test, y_train, y_test = train_test_split(
+            X, y, test_size=0.4, random_state=42, stratify=y
+        )
+        
+        # Standardize Features
+        scaler = StandardScaler()
+        X_train_scaled = scaler.fit_transform(X_train)
         X_test_scaled = scaler.transform(X_test)
+        
+        # Load model or use random forest
+        try:
+            model = joblib.load(os.path.join(MODELS_DIR, 'churn_model.pkl'))
+        except:
+            # Train model if not found
+            model = RandomForestClassifier(n_estimators=100, random_state=42)
+            model.fit(X_train_scaled, y_train)
+        
+        # Choose a test instance to explain
+        sample_idx = min(instance_idx, len(X_test_scaled)-1)
         
         # Generate explanation
         if explanation_type == 'lime':
             explainer = LimeTabularExplainer(
-                training_data=X_test_scaled,
+                training_data=X_train_scaled,
                 feature_names=feature_cols,
                 class_names=['active', 'churn'],
                 mode='classification'
             )
             
             exp = explainer.explain_instance(
-                X_test_scaled[0],
+                X_test_scaled[sample_idx],
                 model.predict_proba,
                 num_features=5
             )
+            plt = exp.as_pyplot_figure()
             
-            # Save the explanation as a figure
-            plt.figure(figsize=(10, 6))
+            # Generate the plot
+            # plt.figure(figsize=(10, 6))
             exp.as_pyplot_figure()
             plt.tight_layout()
             
+            # Save to buffer
             img_buf = io.BytesIO()
             plt.savefig(img_buf, format='png')
             img_buf.seek(0)
-            plt.close()
+            # plt.close()
             
-            # Return the image
             return send_file(img_buf, mimetype='image/png')
             
         elif explanation_type == 'pdp':
-            plt.figure(figsize=(12, 6))
+            # Generate partial dependence plot for the specified feature
+            feature_idx = min(feature_idx, len(feature_cols)-1)
             
-            # Generate partial dependence plot
+            fig, ax = plt.subplots(figsize=(10, 6))
             PartialDependenceDisplay.from_estimator(
                 model,
-                X_test_scaled,
+                X_train_scaled,
                 features=[feature_idx],
-                feature_names=feature_cols
+                feature_names=feature_cols,
+                ax=ax
             )
             
             plt.tight_layout()
             img_buf = io.BytesIO()
             plt.savefig(img_buf, format='png')
             img_buf.seek(0)
-            plt.close()
+            # plt.close()
             
-            # Return the image
             return send_file(img_buf, mimetype='image/png')
             
+        else:
+            return jsonify({'error': 'Invalid explanation type'}), 400
+            
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        traceback_str = traceback.format_exc()
+        return jsonify({'error': str(e), 'traceback': traceback_str}), 500
 
 @app.route('/api/basket-recommendations', methods=['GET'])
 def basket_recommendations():
@@ -676,15 +714,13 @@ def basket_recommendations():
         
     except Exception as e:
         return jsonify({'error': str(e)}), 500
-
 @app.route('/api/seasonal-trends', methods=['GET'])
 def seasonal_trends():
-    conn = None
-    cursor = None
     try:
         conn = get_connection()
         cursor = conn.cursor()
-
+        
+        # Query for seasonal patterns
         query = """
         SELECT 
             t.WEEK_NUM, 
@@ -705,19 +741,14 @@ def seasonal_trends():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
     finally:
-        if cursor:
-            cursor.close()
-        if conn:
-            conn.close()
+        cursor.close()
+        conn.close()
 
 @app.route('/api/brand-preferences', methods=['GET'])
 def brand_preferences():
-    conn = None
-    cursor = None
     try:
         conn = get_connection()
         cursor = conn.cursor()
-
         query = """
         SELECT 
             p.DEPARTMENT, 
@@ -738,25 +769,17 @@ def brand_preferences():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
     finally:
-        if cursor:
-            cursor.close()
-        if conn:
-            conn.close()
-
-# ==================================
+        cursor.close()
+        conn.close()
+# ========================
 # Interactive Search
-# ==================================
+# ========================
 @app.route('/search', methods=['GET'])
 def search():
-    if not session.get('logged_in'):
-        return redirect(url_for('login_page'))  # Updated to correct login page route
-
     hshd_num = request.args.get('hshd_num')
     if not hshd_num:
         return jsonify({'error': 'HSHD_NUM parameter required'}), 400
 
-    conn = None
-    cursor = None
     try:
         conn = get_connection()
         cursor = conn.cursor()
@@ -774,64 +797,38 @@ def search():
         ORDER BY h.HSHD_NUM, t.BASKET_NUM, t.DATE, 
                  t.PRODUCT_NUM, p.DEPARTMENT, p.COMMODITY
         """
-
+        
         cursor.execute(query, hshd_num)
         columns = [column[0] for column in cursor.description]
         results = [dict(zip(columns, row)) for row in cursor.fetchall()]
         
         return jsonify(results)
-
+    
     except pyodbc.Error as e:
         return jsonify({'error': str(e)}), 500
     finally:
-        if cursor:
-            cursor.close()
-        if conn:
-            conn.close()
+        cursor.close()
+        conn.close()
 
-
-# ==================================
-# Authentication: Login / Logout
-# ==================================
 @app.route('/api/login', methods=['POST'])
 def login():
+    global LOGGEDIN
+    LOGGEDIN = True
     try:
-        data = request.get_json()  # <- This reads JSON body
-
-        username = data.get('username')
-        password = data.get('password')
-
-        if username == 'admin' and password == 'password123':
-            session['logged_in'] = True
-            return jsonify({'message': 'Logged in successfully!'}), 200
-        else:
-            return jsonify({'message': 'Invalid credentials'}), 401
-
+        return jsonify({'message': 'Log in  successfully!'})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-
-@app.route('/login', methods=['GET'])
-def login_page():
-    return render_template('login.html')
-
-@app.route('/logout')
-def logout():
-    session.pop('logged_in', None)
-    return redirect(url_for('login_page'))
-
-
-# ==================================
-# Home Page
-# ==================================
+# ========================
+# HTML Templates
+# ========================
 @app.route('/')
 def index():
-    if not session.get('logged_in'):
-        return redirect(url_for('login_page'))
-    return render_template('index.html')
-
-# ==================================
-# Main
-# ==================================
+    if(LOGGEDIN):
+        return render_template('index.html')
+    else:
+        return render_template('login.html')
 if __name__ == '__main__':
+    global LOGGEDIN
+    LOGGEDIN = False
     app.run(debug=True)
