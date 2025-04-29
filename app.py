@@ -22,6 +22,7 @@ import matplotlib.pyplot as plt
 
 import matplotlib
 app = Flask(__name__)
+app.secret_key = os.urandom(24)
 
 
 # Models directory
@@ -53,6 +54,8 @@ def get_connection():
 # ========================
 @app.route('/upload', methods=['GET', 'POST'])
 def upload_data():
+    if not session.get('logged_in'):
+       return redirect(url_for('login_page'))
     if request.method == 'POST':
         try:
             # Get uploaded files
@@ -108,6 +111,8 @@ def analysis():
 
 @app.route('/api/demographic-engagement', methods=['GET'])
 def demographic_engagement():
+    if not session.get('logged_in'):
+       return redirect(url_for('login_page'))
     try:
         conn = get_connection()
         cursor = conn.cursor()
@@ -140,6 +145,8 @@ def demographic_engagement():
 
 @app.route('/api/engagement-over-time', methods=['GET'])
 def engagement_over_time():
+    if not session.get('logged_in'):
+       return redirect(url_for('login_page'))
     try:
         conn = get_connection()
         cursor = conn.cursor()
@@ -171,6 +178,8 @@ def engagement_over_time():
 
 @app.route('/api/basket-analysis', methods=['GET'])
 def basket_analysis():
+    if not session.get('logged_in'):
+       return redirect(url_for('login_page'))
     try:
         conn = get_connection()
         cursor = conn.cursor()
@@ -206,9 +215,13 @@ def basket_analysis():
 # =========================
 @app.route('/models', methods=['GET'])
 def models():
+    if not session.get('logged_in'):
+       return redirect(url_for('login_page'))
     return render_template('models.html')
 @app.route('/api/churn-prediction', methods=['POST'])
 def predict_churn():
+    if not session.get('logged_in'):
+       return redirect(url_for('login_page'))
     try:
         # Get data from request
         data = request.get_json()
@@ -255,6 +268,8 @@ def predict_churn():
 
 @app.route('/api/train-models', methods=['POST'])
 def train_models():
+    if not session.get('logged_in'):
+       return redirect(url_for('login_page'))
     try:
         train_churn_model()
         train_basket_model()
@@ -263,6 +278,8 @@ def train_models():
         return jsonify({'error': str(e)}), 500
 
 def train_churn_model():
+    if not session.get('logged_in'):
+       return redirect(url_for('login_page'))
     conn = get_connection()
     cursor = conn.cursor()
     
@@ -396,6 +413,8 @@ def train_churn_model():
     return model, scaler, feature_cols
 
 def train_basket_model():
+    if not session.get('logged_in'):
+       return redirect(url_for('login_page'))
     conn = get_connection()
     cursor = conn.cursor()
     
@@ -473,6 +492,8 @@ def train_basket_model():
 
 @app.route('/api/model-explanation', methods=['GET'])
 def model_explanation():
+    if not session.get('logged_in'):
+       return redirect(url_for('login_page'))
     try:
         # Get parameters
         feature_idx = int(request.args.get('feature_idx', 0))
@@ -667,6 +688,8 @@ def model_explanation():
 
 @app.route('/api/basket-recommendations', methods=['GET'])
 def basket_recommendations():
+    if not session.get('logged_in'):
+       return redirect(url_for('login_page'))
     try:
         # Get parameters
         basket_items = request.args.get('items', '').split(',')
@@ -716,6 +739,8 @@ def basket_recommendations():
         return jsonify({'error': str(e)}), 500
 @app.route('/api/seasonal-trends', methods=['GET'])
 def seasonal_trends():
+    if not session.get('logged_in'):
+       return redirect(url_for('login_page'))
     try:
         conn = get_connection()
         cursor = conn.cursor()
@@ -746,6 +771,8 @@ def seasonal_trends():
 
 @app.route('/api/brand-preferences', methods=['GET'])
 def brand_preferences():
+    if not session.get('logged_in'):
+       return redirect(url_for('login_page'))
     try:
         conn = get_connection()
         cursor = conn.cursor()
@@ -776,6 +803,8 @@ def brand_preferences():
 # ========================
 @app.route('/search', methods=['GET'])
 def search():
+    if not session.get('logged_in'):
+       return redirect(url_for('login_page'))
     hshd_num = request.args.get('hshd_num')
     if not hshd_num:
         return jsonify({'error': 'HSHD_NUM parameter required'}), 400
@@ -813,43 +842,47 @@ def search():
 @app.route('/api/login', methods=['POST'])
 def login():
     try:
-        data = request.get_json()  # <- This reads JSON body
+        data = request.get_json()
+        if not data:
+            return jsonify({'message': 'Request body must contain JSON data'}), 400
 
         username = data.get('username')
         password = data.get('password')
 
         if username == 'admin' and password == 'password123':
-            app.config['logged_in'] = True
+            session['logged_in'] = True
+            session['username'] = username
+            print(f"User '{username}' logged in successfully.")
             return jsonify({'message': 'Logged in successfully!'}), 200
         else:
-            return jsonify({'message': 'Invalid credentials'}), 401
+            print(f"Failed login attempt for username: '{username}'")
+            return jsonify({'message': 'Invalid username or password'}), 401
 
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
- 
- 
+        print(f"An error occurred during login: {e}")
+        traceback.print_exc()
+        return jsonify({'error': f'An internal error occurred: {str(e)}'}), 500
+
 @app.route('/login', methods=['GET'])
 def login_page():
+    if session.get('logged_in'):
+       return redirect(url_for('index'))
     return render_template('login.html')
- 
+
 @app.route('/logout')
 def logout():
-    app.config['logged_in'] = False
+    username = session.get('username', 'Unknown User')
+    session.pop('logged_in', None)
+    session.pop('username', None)
+    print(f"User '{username}' logged out.")
     return redirect(url_for('login_page'))
- 
- # ==================================
- # Home Page
- # ==================================
+
 @app.route('/')
 def index():
-    if not app.config['logged_in']:
+    if not session.get('logged_in'):
         return redirect(url_for('login_page'))
     return render_template('index.html')
- 
- # ==================================
- # Main
- # ==================================
+
 if __name__ == '__main__':
-    app.secret_key = os.urandom(24)
-    app.config['logged_in'] = False
-    app.run()
+    print("Starting Flask application...")
+    app.run(debug=True, port=5001)
